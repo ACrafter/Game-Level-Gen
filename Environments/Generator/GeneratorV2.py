@@ -5,7 +5,7 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 from Environments.Generator.helper import gen_level, calculate_rewards_PCGRL, calculate_rewards_with_in_range_method, \
-    check_primes_and_max
+    check_primes
 
 
 class Generator(gym.Env):
@@ -27,11 +27,12 @@ class Generator(gym.Env):
                 2.4) The Generator is allowed a set number of changes (% Change) each episode once done it resets
                 2.5) Resetting means generating the SAME LEVEL by passing the SAME SEED.
 
-            3) Once the Generator has trained we freeze it and use it to generate levels for the agent to train on.
-            4) Once the agent has trained we repeat the process again.
+            3) Once the Generator has trained we freeze it and retrain the agent once more.
+            4) Once the agent has trained we repeat the process again until the total timesteps for the generator is
+                reached.
     """
 
-    def __init__(self, player, steps_before_freeze, size=5, max_num=100):
+    def __init__(self, player, steps_before_freeze, size=5, max_num=1000):
         """
         Initializes base parameters, the rest are initialized in the Reset()
         :param size: Board size
@@ -76,7 +77,7 @@ class Generator(gym.Env):
         self.old_time = 0
 
         self.observation_space = spaces.Dict({
-            "map": spaces.Box(low=-1, high=self.max_num, shape=(self.size, self.size), dtype=int),
+            "map": spaces.Box(low=0, high=self.max_num, shape=(self.size, self.size), dtype=int),
             "change_map": spaces.Box(low=0, high=self._max_changes, dtype=int, shape=(self.size, self.size)),
             "ideal_max": spaces.Box(low=0, high=self.max_num, dtype=int, shape=(1,)),
             "ideal_time": spaces.Box(low=0, high=30, dtype=float, shape=(1,)),
@@ -96,15 +97,15 @@ class Generator(gym.Env):
         return {
             "map": self._level.copy(),
             "change_map": self._change_map.copy(),
-            "ideal_max": self._ideal_max_number,
-            "ideal_time": self._ideal_time_spent,
-            "ideal_lives": self._ideal_lives_lost,
-            "current_max": self.current_number,
-            "current_lives": self.current_lives,
-            "current_time": self.current_time,
-            "old_max": self.old_number,
-            "old_lives": self.old_lives,
-            "old_time": self.old_time,
+            "ideal_max": [self._ideal_max_number],
+            "ideal_time": [self._ideal_time_spent],
+            "ideal_lives": [self._ideal_lives_lost],
+            "current_max": [self.current_number],
+            "current_lives": [self.current_lives],
+            "current_time": [self.current_time],
+            "old_max": [self.old_number],
+            "old_lives": [self.old_lives],
+            "old_time": [self.old_time],
         }
 
     def reset(self, seed=None, options=None):
@@ -119,6 +120,8 @@ class Generator(gym.Env):
             self._ideal_max_number = highest_number
             self._freeze = False
             self._seed = random.randint(0, 2 ** 32 - 1)
+            # V2 => made as a try to combat the low effect of the changes on the player eval
+            # self._level = None
             self._past_seeds.append(self._seed)
             print(f"Player Training Ended. Stats: Lives Lost {self._ideal_lives_lost}, "
                   f"Time Cost {self._ideal_time_spent}, "
@@ -131,8 +134,8 @@ class Generator(gym.Env):
         #     self.render()
         #     self.count = 0
 
-        if self._level is None:
-            self._level, _, _ = gen_level(self.size, self._prob, self._seed)
+        # V2 -- V1 => We reset the level each time to the base version
+        self._level = gen_level(self.size, self._seed)
 
         self._changes_made = 0
         self._steps_taken = 0
@@ -144,6 +147,7 @@ class Generator(gym.Env):
 
     def step(self, action):
         self._steps_taken += 1
+        rewards = 0
         print(f'Step: {self._steps_taken}')
         self.old_lives, self.old_time, self.old_number = self.current_lives, self.current_time, self.current_number
         old_level = self._level.copy()
@@ -152,39 +156,22 @@ class Generator(gym.Env):
             self._changes_made += 1
             self._change_map[y][x] += 1
             self.current_number = action[2]
-            primes, max_number = check_primes_and_max(self._level)
-            self.current_lives, self.current_time, _ = self.player.play(self._level.copy(), primes, max_number)
+
+        primes, prime_count = check_primes(self._level)
+        rewards += calculate_rewards_PCGRL(self.current_number, self.old_number, self._ideal_max_number,
+                                           self._accepted_max_variation)
 
         observation = self.get_observation()
-        self.render(old_level)
-
-        if self.old_lives != 0:
-            rewards = calculate_rewards_PCGRL(self.current_lives, self.old_lives, self._ideal_lives_lost,
-                                              self._accepted_lives_variation) + \
-                      calculate_rewards_PCGRL(self.current_time, self.old_time, self._ideal_time_spent,
-                                              self._accepted_time_variation) + \
-                      calculate_rewards_PCGRL(self.current_number, self.old_number, self._ideal_max_number,
-                                              self._accepted_max_variation)
-        else:
-            rewards = 0
-
-        # rewards = calculate_rewards_with_in_range_method(self._stats["lives"],self._ideal_lives_lost,
-        #                                                  self._accepted_lives_variation, 3)\
-        #           + calculate_rewards_with_in_range_method(self._stats["time"],self._ideal_time_spent,
-        #                                                    self._accepted_time_variation, 1) \
-        #           + calculate_rewards_with_in_range_method(self._stats["max_num"],self._ideal_max_number,
-        #                                                    self._accepted_max_variation, 5)
-
         done = self._changes_made >= self._max_changes or self._steps_taken >= self._max_steps
-        # info = {
-        #     ["Iteration"]: self._steps_taken,
-        #     ["changes"]: self._changes_made,
-        #     ["Lives & Time Lost"]: [self._stats["lives"], self._stats["time"]],
-        #     ["Ideal Values"]: [self._ideal_lives_lost, self._ideal_time_spent],
-        #     ["Difference"]: [self._stats["lives"] - self._ideal_lives_lost,
-        #                      self._stats['time'] - self._ideal_time_spent]
-        # }
-        # self.render()
+
+        if done and change > 0:
+            self.render(old_level)
+            self.current_lives, self.current_time, _, _ = self.player.play([self._level.copy(), primes, prime_count])
+            rewards += calculate_rewards_PCGRL(self.current_lives, self.old_lives, self._ideal_lives_lost,
+                                               self._accepted_lives_variation) + \
+                       calculate_rewards_PCGRL(self.current_time, self.old_time, self._ideal_time_spent,
+                                               self._accepted_time_variation)
+
         return observation, rewards, done, False, {}
 
     def update(self, action):
@@ -209,5 +196,3 @@ class Generator(gym.Env):
     def _get_variations(self):
         return [[self.current_lives, self._ideal_lives_lost], [self.current_time, self._ideal_time_spent],
                 [max(self._level.flatten()), self._ideal_max_number]]
-
-

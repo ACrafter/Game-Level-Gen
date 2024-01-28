@@ -1,12 +1,13 @@
 import os
-import time
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from Environments.Generator.GenV3 import Generator
-from Environments.Player.PlayerV3 import PlayerV3
+from Environments.Player.PlayerV4 import Player
 from Environments.Player.PlayerTrainer import Trainer
+
 
 # TODO: Fix The Prime Count Problem
 # TODO: Fix the Diversity Problem
@@ -32,16 +33,23 @@ class TrainAndLoggingCallback(BaseCallback):
         return True
 
 
-PLY_LOGS = './player_logs/3.'
-GEN_LOGS = './generator_logs/2.'
-CHECKPOINT_DIR = './Generator_models/V3/'
-GEN_STEPS = 5_000_000
-PLY_STEPS = 500_000
-GEN_FREEZE_AFTER = 1_000_000
+if __name__ == "__main__":
+    PLY_LOGS = './player_logs/4.'
+    GEN_LOGS = './final_generator_logs/V3.'
+    CHECKPOINT_DIR = './Final_Generator_models/V3/Final/'
+    GEN_STEPS = 3_500_000
+    PLY_STEPS = 500_000
+    GEN_FREEZE_AFTER = 1_000_000
 
-Player = Trainer(PlayerV3, PLY_STEPS, PLY_LOGS)
-env = Generator(Player, GEN_FREEZE_AFTER)
-callback = TrainAndLoggingCallback(check_freq=GEN_FREEZE_AFTER + PLY_STEPS, save_path=CHECKPOINT_DIR)
+    Player = Trainer(Player, PLY_STEPS, PLY_LOGS)
 
-model = PPO('MultiInputPolicy', env, verbose=1, tensorboard_log=GEN_LOGS, ent_coef=0.001)
-model.learn(total_timesteps=GEN_STEPS, callback=callback)
+
+    def create_gen_env():
+        return Generator(True, Player, GEN_FREEZE_AFTER)
+
+
+    env = SubprocVecEnv([lambda: create_gen_env() for _ in range(5)])
+    callback = TrainAndLoggingCallback(check_freq=500_000, save_path=CHECKPOINT_DIR)
+
+    model = PPO('MultiInputPolicy', env, verbose=1, tensorboard_log=GEN_LOGS)
+    model.learn(total_timesteps=GEN_STEPS, callback=callback)

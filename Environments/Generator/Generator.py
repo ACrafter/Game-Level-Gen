@@ -33,6 +33,7 @@ class Generator(gym.Env):
         self.generator_steps_per_eps = generator_t
         self.player_max_steps = player_max_t
         self.player_lr = player_lr
+        self.player_total_trained_steps = 0
 
         self.observation_space = spaces.Dict({
             "lost_lives": spaces.Box(0, 1, shape=(1,), dtype=int),
@@ -43,7 +44,7 @@ class Generator(gym.Env):
         })
 
         # Increase Max Range, Increase Prime Range, Hold, Decrease Max Range, Decrease Prime Range
-        self.action_space = spaces.Discrete(7)  # Can Be Increased To provide more control
+        self.action_space = spaces.Discrete(8)  # Can Be Increased To provide more control
 
         self.reset()
 
@@ -74,9 +75,17 @@ class Generator(gym.Env):
         self.generator_eps_steps = 0
         self.player_trained_steps = 0
 
-        if self.player_trained_steps < self.player_max_steps:
-            # self.train_player()
-            pass
+        if self.player_total_trained_steps < self.player_max_steps:
+
+            print(f"Started Player Training, Steps: {self.player_steps}, Learning_Rate: {self.player_lr}")
+            start_time = gettime()
+            while self.player_trained_steps < self.player_steps:
+                print(f"Trained for: {self.player_trained_steps}")
+                self.train_player()
+            end_time = gettime()
+            print(f"Player Training Ended, Time Taken: {int(end_time - start_time) // 60} mins")
+            self.player_total_trained_steps += self.player_steps
+
         else:
             print(f"============== Player Reached Max Training Steps: {self.player_max_steps}")
 
@@ -86,16 +95,12 @@ class Generator(gym.Env):
         return observation, info
 
     def train_player(self):
-        print(f"Started Player Training, Steps: {self.player_steps}, Learning_Rate: {self.player_lr}",
-              f"Trained for: {self.player_trained_steps}")
 
-        start_time = gettime()
         self.player_model = DQN('MultiInputPolicy', self.player, verbose=1, tensorboard_log='./player_log/',
                                 learning_rate=self.player_lr)
 
-        end_time = gettime()
+        self.player_model.learn(total_timesteps=1)
         self.player_trained_steps += self.player_steps
-        print(f"Player Training Ended, Time Taken: {int(end_time - start_time) // 60} mins")
 
     def step(self, action):
         self.generator_eps_steps += 1
@@ -142,7 +147,6 @@ class Generator(gym.Env):
 
         self.lost_lives = 10 - lives
         self.time_spent = time
-        self.failed = failed
 
         if 1 < self.lost_lives < 5:
             total_reward += 50
@@ -153,11 +157,6 @@ class Generator(gym.Env):
             total_reward += 50
         else:
             total_reward -= 20
-
-        if self.failed:
-            total_reward -= 200
-        else:
-            total_reward += 200
 
         observation = self._get_obs()
         terminated = self.generator_eps_steps == self.generator_steps_per_eps

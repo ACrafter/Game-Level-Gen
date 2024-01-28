@@ -16,8 +16,9 @@ class PlayerV3(gym.Env):
         self.render_mode = render_mode
         self.max_value = max_number
         self.training = training
-        self.current_max = 5
         self.size = size
+
+        self.current_max = 5
         self.max_lives = 10
         self.max_time = 30
         self.prime_percent = 0.3
@@ -77,7 +78,7 @@ class PlayerV3(gym.Env):
         self.action_space = spaces.Discrete(5)
 
         # Gen info
-        self.total_levels_played = 0
+        self.total_levels_played = -1
         self.total_lives_lost = 0
         self.total_time_spend = np.inf
         self.max_num_appeared = 0
@@ -106,13 +107,12 @@ class PlayerV3(gym.Env):
         self.total_time_spend = abs(min(self.remaining_time, self.total_time_spend))
         self.start_time = time.time()
         if self.preset_level is None:
-            self.current_max = 5
             self.board, self._current_primes = gen_board(self.size, self.current_max, self.max_prime_count)
+            self.remaining_primes = self.max_prime_count
         else:
-            self.board, self._current_primes, self.current_max = self.preset_level
+            self.board, self._current_primes, self.remaining_primes = self.preset_level
         self.lives = self.max_lives
         self.remaining_time = self.max_time
-        self.remaining_primes = self.max_prime_count
         self.player_pos = [np.random.randint(0, self.size), np.random.randint(0, self.size)]
         self.current_number = self.board[self.player_pos[0]][self.player_pos[1]]
 
@@ -183,11 +183,7 @@ class PlayerV3(gym.Env):
             self.agent_actions.append(action)
             self.agent_moves.append(move_direction)
             self.average_lives.append(self.lives)
-            self.average_time.append(self.remaining_time)
             self.max_numbers.append(self.current_max)
-            self.rewards['Move'].append(move_reward)
-            self.rewards['Eat'].append(eat_reward)
-            self.rewards['Progress'].append(progression_reward)
 
             if self.steps >= 50_000:
                 self.render()
@@ -195,10 +191,8 @@ class PlayerV3(gym.Env):
                 self.agent_moves = []
                 self.agent_actions = []
                 self.average_lives = []
-                self.average_time = []
                 self.max_numbers = []
                 self.numbers_eaten = []
-                self.rewards = {"Move": [], "Eat": [], "Progress": []}
 
         if self.render_mode == 'Human':
             clock = pygame.time.Clock()
@@ -318,10 +312,9 @@ class PlayerV3(gym.Env):
             self.draw_info()
         else:
             print(f"Agent Actions: {self.agent_actions} \n"
-                  f"Agent Steps: {self.agent_moves} \n Agent Lives: {self.average_lives} \n "
-                  f"Agent Average Time Spent: {self.average_time} \n "
-                  f"Agent Rewards: {self.rewards}\n"
-                  f"Numbers Eaten: {self.numbers_eaten}"
+                  f"Agent Steps: {self.agent_moves} \n "
+                  f"Agent Lives: {self.average_lives} \n "
+                  f"Numbers Eaten: {self.numbers_eaten} \n"
                   f"Maxes: {self.max_numbers}")
 
     def draw_board(self):
@@ -375,7 +368,7 @@ class PlayerV3(gym.Env):
 
     def get_average_lives_lost(self):
         if self.total_levels_played > 0:
-            return self.total_lives_lost / self.total_levels_played
+            return self.total_lives_lost // self.total_levels_played
         else:
             return 0
 

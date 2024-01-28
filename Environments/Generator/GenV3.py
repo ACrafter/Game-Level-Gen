@@ -1,17 +1,16 @@
 import random
-import time
 
 import gymnasium as gym
 import sympy
 from gymnasium import spaces
 import numpy as np
-from Environments.Generator.helper import gen_level, calculate_rewards_PCGRL, calculate_rewards_with_in_range_method, \
-    check_primes_and_max
+from Environments.Generator.helper import gen_level, calculate_rewards_with_in_range_method, \
+    check_primes
 
+EASY_LIVES, EASY_LIVES_VARIATION, EASY_MAX, EASY_MAX_VARIATION = 1, 1, 2, 3
+MID_LIVES, MID_LIVES_VARIATION, MID_MAX, MID_MAX_VARIATION = 2, 2, 10, 5
+HARD_LIVES, HARD_LIVES_VARIATION, HARD_MAX, HARD_MAX_VARIATION = 3, 3, 15, 10
 
-# TODO: Add the following to the observation space: max_prime_count, min_prime_count, current_prime_number. Also add
-#  mins and maxs for the rest of our parameters. Add a max_of_same, to represent the max amount of the same number in
-#  a row
 
 class Generator(gym.Env):
     """
@@ -36,7 +35,7 @@ class Generator(gym.Env):
             4) Once the agent has trained we repeat the process again.
     """
 
-    def __init__(self, player, steps_before_freeze, size=5, max_num=100):
+    def __init__(self, training, player, steps_before_freeze, difficulty=None, size=5, max_num=1000):
         """
         Initializes base parameters, the rest are initialized in the Reset()
         :param size: Board size
@@ -44,6 +43,8 @@ class Generator(gym.Env):
 
         super(Generator, self).__init__()
         self.size = size
+        self.is_training = training
+        self.difficulty = difficulty
         self.max_num = max_num
         self.player = player
         self.max_iterations = steps_before_freeze
@@ -56,13 +57,11 @@ class Generator(gym.Env):
         self._past_levels = np.array([])
 
         self._playable = 1
-        self._ideal_lives_lost = 0
+        self._ideal_lives_lost, self._ideal_max_number, self._accepted_lives_variation, self._accepted_max_variation = \
+            self.set_difficulty()
         self._ideal_time_spent = 0
-        self._ideal_max_number = 0
         self._ideal_prime_count = int(self.size * self.size * 0.3)
-        self._accepted_lives_variation = 1
         self._accepted_time_variation = 5
-        self._accepted_max_variation = 5
         self._accepted_prime_count_variations = int(self.size * self.size * 0.1)
 
         self._changes_made = 0
@@ -74,73 +73,70 @@ class Generator(gym.Env):
         self._freeze = True
 
         # Agent related details
+        self.remaining_primes = 0
         self.current_number = 0
         self.current_lost_lives = 0
-        self.current_time = 0
         self.current_prime_count = 0
-        self.old_number = 0
-        self.old_lives = 0
-        self.old_time = 0
 
         self.observation_space = spaces.Dict({
             "map": spaces.Box(low=-1, high=self.max_num, shape=(self.size, self.size), dtype=int),
             "max_max": spaces.Box(low=0, high=self.max_num, dtype=int, shape=(1,)),
-            "max_time": spaces.Box(low=0, high=30, dtype=float, shape=(1,)),
             "max_lives": spaces.Box(low=0, high=10, dtype=float, shape=(1,)),
             "max_prime_count": spaces.Box(low=5, high=15, dtype=int, shape=(1,)),
             "min_max": spaces.Box(low=0, high=self.max_num, dtype=int, shape=(1,)),
-            "min_time": spaces.Box(low=0, high=30, dtype=float, shape=(1,)),
             "min_lives": spaces.Box(low=0, high=10, dtype=float, shape=(1,)),
             "min_prime_count": spaces.Box(low=5, high=15, dtype=int, shape=(1,)),
             "current_max": spaces.Box(low=0, high=self.max_num, dtype=int, shape=(1,)),
             "current_lives": spaces.Box(low=0, high=10, dtype=float, shape=(1,)),
-            "current_time": spaces.Box(low=0, high=30, dtype=float, shape=(1,)),
             "current_prime_count": spaces.Box(low=5, high=15, dtype=int, shape=(1,)),
-            "old_lives": spaces.Box(low=0, high=10, dtype=float, shape=(1,)),
-            "old_time": spaces.Box(low=0, high=30, dtype=float, shape=(1,)),
             "playable_level": spaces.Box(low=0, high=2, dtype=int, shape=(1,)),
             "prime_mask": spaces.Box(low=-1, high=self.max_num, shape=(self.size, self.size), dtype=int)
         })
 
         # Using Narrow Representation
-        self.action_space = spaces.Discrete(100)
+        self.action_space = spaces.Discrete(1000)
 
     def get_observation(self):
         return {
             "map": self._level.copy(),
-            "max_max": self._ideal_max_number + self._accepted_max_variation,
-            "max_time": self._ideal_time_spent + self._accepted_time_variation,
-            "max_lives": self._ideal_lives_lost + self._accepted_lives_variation,
-            "max_prime_count": self._ideal_prime_count + self._accepted_prime_count_variations,
-            "min_max": self._ideal_max_number - self._accepted_max_variation,
-            "min_time": self._ideal_time_spent - self._accepted_time_variation,
-            "min_lives": self._ideal_lives_lost - self._accepted_lives_variation,
-            "min_prime_count": self._ideal_prime_count - self._accepted_prime_count_variations,
-            "current_max": self.current_number,
-            "current_lives": self.current_lost_lives,
-            "current_time": self.current_time,
-            "current_prime_count": self.current_prime_count,
-            "old_lives": self.old_lives,
-            "old_time": self.old_time,
-            "playable_level": self._playable,
+            "max_max": [self._ideal_max_number + self._accepted_max_variation],
+            "max_lives": [self._ideal_lives_lost + self._accepted_lives_variation],
+            "max_prime_count": [self._ideal_prime_count + self._accepted_prime_count_variations],
+            "min_max": [self._ideal_max_number - self._accepted_max_variation],
+            "min_lives": [self._ideal_lives_lost - self._accepted_lives_variation],
+            "min_prime_count": [self._ideal_prime_count - self._accepted_prime_count_variations],
+            "current_max": [self.current_number],
+            "current_lives": [self.current_lost_lives],
+            "current_prime_count": [self.current_prime_count],
+            "playable_level": [self._playable],
             "prime_mask": np.array([[int(sympy.isprime(num)) for num in row] for row in self._level], dtype=int)
         }
+
+    def set_difficulty(self):
+        if self.difficulty is None:
+            self.difficulty = random.randint(1, 3)
+
+        if self.difficulty == 0:
+            return EASY_LIVES, EASY_LIVES_VARIATION, EASY_MAX, EASY_MAX_VARIATION
+        elif self.difficulty == 1:
+            return MID_LIVES, MID_LIVES_VARIATION, MID_MAX, MID_MAX_VARIATION
+        else:
+            return HARD_LIVES, HARD_LIVES_VARIATION, HARD_MAX, HARD_MAX_VARIATION
 
     def reset(self, seed=None, options=None):
         if self.current_iteration >= self.max_iterations:
             self._freeze = True
 
-        if self._freeze:
+        if self._freeze and self.is_training:
             print("Player Training Started!")
-            self._ideal_lives_lost, self._ideal_time_spent, self._ideal_max_number = self.player.train()
+            _, _, self._ideal_max_number = self.player.train()
             self._freeze = False
-            self._seed = [random.randint(0, 2 ** 32 - 1) for _ in range(1000)]
-            self._past_seeds.append(self._seed[random.randint(0, 1000)])
-            print(f"Player Training Ended. Stats: Lives Lost {self._ideal_lives_lost}, "
-                  f"Time Cost {self._ideal_time_spent}, "
+            print(f"Player Training Ended. Stats: Random Difficulty: {self.difficulty}"
+                  f"Lives Lost {self._ideal_lives_lost}, "
                   f"Max To Appear {self._ideal_max_number}.")
             self.current_iteration = 0
 
+        self._seed = random.randint(0, 2 ** 32 - 1)
         self._level = gen_level(self.size, self._seed)
         self._changes_made = 0
         self._steps_taken = 0
@@ -151,44 +147,45 @@ class Generator(gym.Env):
         return observation, {}
 
     def step(self, action):
-        rewards = - 40
+        rewards = 0
         lvl_board = None
         eaten_numbers = None
-        change, new_value = self.update(action, self._changes_made)
-        if change and self._changes_made < self._max_changes:
-            old_value = self.current_number
-            self._level[self._changes_made // self.size][self._changes_made % self.size] = new_value
-            self.current_number = new_value
+        if self._changes_made <= self._max_changes:
+            change, new_value = self.update(action, self._changes_made)
+            if change:
+                self._level[self._changes_made // self.size][self._changes_made % self.size] = new_value
+                self.current_number = new_value
 
-            if sympy.isprime(self.current_number):
-                self.current_prime_count += 1
+                if sympy.isprime(self.current_number):
+                    self.current_prime_count += 1
 
-            self._changes_made += 1
-            rewards = calculate_rewards_with_in_range_method(self.current_number, self._ideal_max_number,
-                                                             self._accepted_max_variation, 0.1)
+                self._changes_made += 1
+                rewards += \
+                    calculate_rewards_with_in_range_method(self.current_number, self._ideal_max_number,
+                                                           self._accepted_max_variation, 0.1) + \
+                    calculate_rewards_with_in_range_method(self.current_prime_count, self._ideal_prime_count,
+                                                           self._accepted_prime_count_variations, 0.2)
 
-            if not self.is_playable():
-                rewards *= 0.75
+        if self.is_playable() and self._changes_made == self._max_changes:
+            rewards += 10
+            preset = self.get_preset_level()
+            self.current_lost_lives, self.remaining_primes, lvl_board, eaten_numbers = self.player.play(preset,
+                                                                                                        default=not
+                                                                                                        self.is_training
+                                                                                                        )
 
-        if change and self._changes_made == self._max_changes and self.is_playable():
-            old_value = self.current_number
-            self._level[self._changes_made // self.size][self._changes_made % self.size] = new_value
-            self.current_number = new_value
-            primes, max_number = check_primes_and_max(self._level)
-            self.current_lost_lives, self.current_time, lvl_board, eaten_numbers = self.player.play(self._level.copy(),
-                                                                                                    primes, max_number)
-            rewards = calculate_rewards_PCGRL(self.current_lost_lives, self.old_lives, self._ideal_lives_lost,
-                                              self._accepted_lives_variation) + \
-                      calculate_rewards_PCGRL(self.current_time, self.old_time, self._ideal_time_spent,
-                                              self._accepted_time_variation) + \
-                      calculate_rewards_with_in_range_method(self.current_number, self._ideal_max_number,
-                                                             self._accepted_max_variation, 0.1)
+            rewards += \
+                calculate_rewards_with_in_range_method(self.current_lost_lives, self._ideal_lives_lost,
+                                                       self._accepted_lives_variation, 0.5) * 2
 
-        observation = self.get_observation()
-        done = self._changes_made >= self._max_changes or self._steps_taken >= self._max_steps
+        elif not self.is_playable() and self._changes_made == self._max_changes:
+            rewards -= 20
 
         self._steps_taken += 1
         self.current_iteration += 1
+
+        observation = self.get_observation()
+        done = self._changes_made == self._max_changes or self._steps_taken >= self._max_steps
 
         if done:
             self.render(lvl_board, eaten_numbers)
@@ -200,27 +197,15 @@ class Generator(gym.Env):
         change = True if self._level[cords // self.size][cords % self.size] != action else False
         return change, new_value
 
-    """
-        Ensures that the level has the right prime count & has the right variety
-    """
+    def get_preset_level(self):
+        primes, prime_count = check_primes(self._level)
+        return self._level.copy(), primes, prime_count
 
     def is_playable(self):
         if self._ideal_prime_count - self._accepted_prime_count_variations <= self.current_prime_count \
                 <= self._ideal_prime_count + self._accepted_prime_count_variations:
             self._playable = 2
             return True
-
-        # Uniqueness enforcement #1
-        # for row in self._level:
-        #     if len(set(row)) != len(row):
-        #         self._playable = 0
-        #         return False
-        #
-        #     # Check uniqueness in columns
-        # for col in self._level.T:  # Transpose to iterate over columns
-        #     if len(set(col)) != len(col):
-        #         self._playable = 0
-        #         return False
 
         self._playable = 0
         return False
@@ -248,10 +233,9 @@ class Generator(gym.Env):
         print('Eaten Numbers: ')
         print(eaten_numbers)
 
-        print(f'Variations: (Lives, Time, Max)')
-        for i in self._get_variations():
-            print(i)
+        print(f'Variations: {self._get_variations()}')
 
     def _get_variations(self):
-        return [[self.current_lost_lives, self._ideal_lives_lost], [self.current_time, self._ideal_time_spent],
-                [max(self._level.flatten()), self._ideal_max_number]]
+        return {'Lives': [self.current_lost_lives, self._ideal_lives_lost],
+                'Primes': [self.remaining_primes, self.current_prime_count],
+                'Max': [max(self._level.flatten()), self._ideal_max_number]}
