@@ -1,15 +1,9 @@
-
 ######### GenV1 Iterations:
 
 """
 
 
 """
-
-
-
-
-
 
 ######### GenV3 Iterations:
 
@@ -55,7 +49,7 @@ Reward: Initially 0
         
         After 25th step
         if level is playable:
-            +10 + 2 * PCGRL rewards for lives & time
+            +10 + 2 *  rewards for lives
         else:
             -20
             

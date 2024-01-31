@@ -36,7 +36,7 @@ class TrainAndLoggingCallback(BaseCallback):
 if __name__ == "__main__":
     PLY_LOGS = './player_logs/4.'
     GEN_LOGS = './final_generator_logs/V3.'
-    CHECKPOINT_DIR = './Final_Generator_models/V3/Final/'
+    CHECKPOINT_DIR = './Final_Generator_models/V3.'
     GEN_STEPS = 3_500_000
     PLY_STEPS = 500_000
     GEN_FREEZE_AFTER = 1_000_000
@@ -53,3 +53,4 @@ if __name__ == "__main__":
 
     model = PPO('MultiInputPolicy', env, verbose=1, tensorboard_log=GEN_LOGS)
     model.learn(total_timesteps=GEN_STEPS, callback=callback)
+    model.save('./Final_Generator_models/V3/Final_Iteration/.')

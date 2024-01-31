@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import gymnasium as gym
 import pygame.time
@@ -9,16 +11,17 @@ ACTION_TO_TEXT = {0: 'UP', 1: 'DOWN', 2: 'LEFT', 3: 'RIGHT', 4: 'EAT'}
 
 
 class Player(gym.Env):
-    def __init__(self, size=5, max_num=1000, preset_level=None, training=True):
+    def __init__(self, size=5, max_num=100, preset_level=None, training=True):
         self.size = size
         self.max_num = max_num
         self.preset_level = preset_level
         self.training = training
 
-        self.max_lives = 10
+        self.max_lives = 5
         self.current_max_num = 5
-        self.max_time = 30
+        self.max_eps_steps = 2000
         self.level = 1
+        self.iter = 1
 
         self.ideal_prime_count = int(self.size * self.size * 0.3)
         self.accepted_prime_variation = int(self.size * self.size * 0.1)
@@ -28,7 +31,7 @@ class Player(gym.Env):
 
         self.steps_since_last_eat = 0
         self.lives_lost = 0
-        self.time_spent = 0
+        self.eps_steps = 0
 
         self.is_prime = None
         self.start_time = None
@@ -55,7 +58,7 @@ class Player(gym.Env):
             "player_pos": spaces.Box(0, self.size, shape=(2,),
                                      dtype=int),
             "current_number": spaces.Box(0, self.max_num, shape=(1,), dtype=int),
-            "is_prime": spaces.Box(0, 1, shape=(1, ), dtype=int)
+            "is_prime": spaces.Box(0, 1, shape=(1,), dtype=int)
         })
 
         # Action Space
@@ -73,7 +76,6 @@ class Player(gym.Env):
     def reset(self, seed=None, options=None):
         # Gen Info
         self.total_levels_played += 1
-        self.total_time_spend += self.time_spent
         self.number_of_primes = self.remaining_number_of_primes
         self.total_lives_lost += self.lives_lost
 
@@ -86,9 +88,8 @@ class Player(gym.Env):
 
         # Agent Info
         self.lives_lost = 0
-        self.time_spent = 0
         self.steps_since_last_eat = 0
-        self.player_pos = [np.random.randint(0, self.size), np.random.randint(0, self.size)]
+        self.player_pos = [0, 0]
         self.current_number = self.board[self.player_pos[0]][self.player_pos[1]]
         self.is_prime = 1 if sympy.isprime(self.current_number) else 0
         self.eaten_numbers = []
@@ -98,11 +99,11 @@ class Player(gym.Env):
         self.steps += 1
 
         obs = self._get_obs()
-        self.start_time = pygame.time.get_ticks() // 1000
+        self.eps_steps = 0
         return obs, {}
 
     def step(self, action):
-        reward = 0
+        reward = -10
         if action == 0:  # Up
             self.player_pos[0] = max(self.player_pos[0] - 1, 0)
 
@@ -116,34 +117,38 @@ class Player(gym.Env):
             self.player_pos[1] = min(self.player_pos[1] + 1, 4)
 
         if action == 4:  # Eating
+            # if self.current_number != 0 and self.training:
             self.eaten_numbers.append(
                     [self.current_number, True if sympy.isprime(self.current_number) else False])
 
             if self.is_prime == 1:
-                reward += 30
+                reward += 20
                 self.remaining_number_of_primes -= 1
             else:
-                reward -= 10
-                self.lives_lost += 1
+                if self.current_number == 0:
+                    reward -= 5
+                    self.lives_lost += 1
+                if self.current_number != 0:
+                    reward = - 5
+                    self.lives_lost += 1
 
             self.board[self.player_pos[0]][self.player_pos[1]] = 0
 
-        current_time = pygame.time.get_ticks() // 1000
-        self.time_spent = min(current_time - self.start_time, 30)
+        self.eps_steps += 1
 
         if self.lives_lost == 10:
             self.current_max_num = max(self.current_max_num - 5, 5)
 
         if self.remaining_number_of_primes == 0:
-            self.current_max_num = min(self.current_max_num + 5, 1000)
+            self.current_max_num = min(self.current_max_num + 1, (self.max_num * self.iter) // 4)
 
-        if self.training:
-            self.actions_taken.append([ACTION_TO_TEXT[action], f'Current Number: {self.current_number}'])
+        # if self.training and self.current_number != 0:
+        self.actions_taken.append([ACTION_TO_TEXT[action], f'Current Number: {self.current_number}'])
 
         self.max_num_appeared = max(self.max_num_appeared, self.current_max_num)
         self.current_number = self.board[self.player_pos[0]][self.player_pos[1]]
         self.is_prime = 1 if sympy.isprime(self.current_number) else 0
-        done = self.lives_lost == 10 or self.time_spent == 30 or self.remaining_number_of_primes == 0
+        done = self.lives_lost == 10 or self.eps_steps >= self.max_eps_steps or self.remaining_number_of_primes == 0
         obs = self._get_obs()
 
         if done and self.steps == 20 and self.training:
@@ -158,7 +163,7 @@ class Player(gym.Env):
 
         print(f"Agent's Actions: {self.actions_taken}")
         print(f'Eaten Numbers: {self.eaten_numbers}')
-        print(f'Lives Lost: {self.lives_lost}, Time Spent: {self.time_spent}, Current Max: {self.current_max_num}, '
+        print(f'Lives Lost: {self.lives_lost}, Steps Taken: {self.eps_steps}, Current Max: {self.current_max_num}, '
               f'Remaining Primes: {self.remaining_number_of_primes}')
 
         self.steps = 0

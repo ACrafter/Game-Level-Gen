@@ -24,7 +24,7 @@ class Trainer:
         self.log_dir = log_dir
         self.model = model
         self.preset = preset
-        self.iterations = 0
+        self.iterations = 1
 
     def train(self, lr=None, er=None, default=False):
         """
@@ -36,6 +36,7 @@ class Trainer:
         """
         if not default:
             train_env = self.env()
+            train_env.iter = self.iterations
             if self.model is None:
                 self.model = DQN('MultiInputPolicy', train_env, verbose=1, tensorboard_log=self.log_dir)
                 self.model.learn(total_timesteps=self.timesteps)
@@ -46,6 +47,7 @@ class Trainer:
                                       env=train_env)
                 self.model.learn(total_timesteps=self.timesteps)
 
+            self.iterations += 1
             return [int(train_env.get_average_lives_lost()), int(train_env.get_average_time_lost()),
                     train_env.get_max_number_appeared()]
         else:
@@ -62,7 +64,6 @@ class Trainer:
                 action, _ = self.model.predict(state)
                 state, reward, done, _, info = eval_env.step(action)
 
-            print([eval_env.lives_lost, eval_env.remaining_number_of_primes, eval_env.board, eval_env.eaten_numbers])
             return [eval_env.lives_lost, eval_env.remaining_number_of_primes, eval_env.board, eval_env.eaten_numbers]
         else:
             state, _ = self.env.reset()

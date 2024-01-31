@@ -3,6 +3,9 @@ import time
 import pygame
 import numpy as np
 import sympy
+from stable_baselines3 import PPO
+
+from Environments.Generator.GenV3 import Generator
 
 ''' what did I change?
 1. the right and left events were switched.
@@ -133,7 +136,20 @@ class NumberMuncher:
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Number Muncher")
         if self.gen_path and self.env:
-            pass
+            self.env.difficulty = self._difficulty
+            Gen_model = PPO.load(self.gen_path, self.env)
+
+            self.env.reset()
+            self.env.current_lost_lives = 10 - self._player_lives
+            done = False
+            playable = False
+            while not done:
+                action, _ = Gen_model.predict(self.env.get_observation())
+                state, reward, done, _, _ = self.env.step(action)
+                playable = self.env.is_playable()
+
+            print(f"Playable: {self.env.is_playable()}")
+            self.board, _, self.remaining_primes = self.env.get_preset_level()
         else:
             self.board = np.random.randint(0, 100, size=(5, 5))
             for i in self.board.flatten():
@@ -142,6 +158,8 @@ class NumberMuncher:
 
         self.start_time = pygame.time.get_ticks() // 1000
         self.max_time = TIMER_DURATION[1]
+
+        print(self.remaining_primes)
         self.run()
 
     def handle_events(self):
@@ -256,5 +274,9 @@ class NumberMuncher:
             self.render()
             clock.tick(30)
 
+        if self.game_over:
+            self.setup()
+            self.game_over = False
 
-N = NumberMuncher()
+
+N = NumberMuncher('../Final_Generator_models/V3/GenV3 -- Iteration#4.zip', Generator(False, None, 100))

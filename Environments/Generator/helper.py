@@ -37,17 +37,24 @@ def calculate_rewards_PCGRL(current, old, ideal, accepted_variation, max_only=Fa
         return high - old + current - low
 
 
-def check_primes(level):
+def check_primes(level, min_number=None, max_number=None):
     primes = []
     for e in level.flatten():
-        if sympy.isprime(e):
-            primes.append(e)
+        if min_number:
+            if sympy.isprime(e) and min_number <= e <= max_number:
+                primes.append(e)
+        else:
+            if sympy.isprime(e):
+                primes.append(e)
 
     return primes, len(primes)
 
 
-def calculate_rewards_with_in_range_method(current, ideal, accepted_variation, weight):
-    low = ideal - accepted_variation
+def calculate_rewards_with_in_range_method(current, ideal, accepted_variation, weight, max_num=False):
+    if max_num:
+        low = ideal - 2 * accepted_variation
+    else:
+        low = ideal - accepted_variation
     high = ideal + accepted_variation
 
     if low <= current <= high:
