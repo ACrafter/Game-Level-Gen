@@ -103,7 +103,7 @@ class Player(gym.Env):
         return obs, {}
 
     def step(self, action):
-        reward = -10
+        reward = -10 if not sympy.isprime(self.current_number) else -5
         if action == 0:  # Up
             self.player_pos[0] = max(self.player_pos[0] - 1, 0)
 
@@ -117,19 +117,17 @@ class Player(gym.Env):
             self.player_pos[1] = min(self.player_pos[1] + 1, 4)
 
         if action == 4:  # Eating
-            # if self.current_number != 0 and self.training:
-            self.eaten_numbers.append(
-                    [self.current_number, True if sympy.isprime(self.current_number) else False])
+            if self.current_number != 0:
+                self.eaten_numbers.append(
+                    [self.current_number, True if sympy.isprime(self.current_number) else False]
+                )
 
             if self.is_prime == 1:
-                reward += 20
+                reward = 20
                 self.remaining_number_of_primes -= 1
             else:
-                if self.current_number == 0:
-                    reward -= 5
-                    self.lives_lost += 1
                 if self.current_number != 0:
-                    reward = - 5
+                    reward = -5
                     self.lives_lost += 1
 
             self.board[self.player_pos[0]][self.player_pos[1]] = 0
@@ -142,8 +140,8 @@ class Player(gym.Env):
         if self.remaining_number_of_primes == 0:
             self.current_max_num = min(self.current_max_num + 1, (self.max_num * self.iter) // 4)
 
-        # if self.training and self.current_number != 0:
-        self.actions_taken.append([ACTION_TO_TEXT[action], f'Current Number: {self.current_number}'])
+        if self.training and self.current_number != 0:
+            self.actions_taken.append([ACTION_TO_TEXT[action], f'Current Number: {self.current_number}'])
 
         self.max_num_appeared = max(self.max_num_appeared, self.current_max_num)
         self.current_number = self.board[self.player_pos[0]][self.player_pos[1]]

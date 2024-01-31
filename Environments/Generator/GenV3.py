@@ -97,10 +97,10 @@ class Generator(gym.Env):
     def get_observation(self):
         return {
             "map": self._level.copy(),
-            "max_max": [self._ideal_max_number + self._accepted_max_variation],
+            "max_max": [min(self._ideal_max_number + self._accepted_max_variation, 100)],
             "max_lives": [self._ideal_lives_lost + self._accepted_lives_variation],
             "max_prime_count": [self._ideal_prime_count + self._accepted_prime_count_variations],
-            "min_max": [self._ideal_max_number - (self._accepted_max_variation * 2)],
+            "min_max": [max(self._ideal_max_number - (self._accepted_max_variation * 2), 1)],
             "min_lives": [self._ideal_lives_lost - self._accepted_lives_variation],
             "min_prime_count": [self._ideal_prime_count - self._accepted_prime_count_variations],
             "current_max": [self.current_number],
@@ -180,7 +180,7 @@ class Generator(gym.Env):
 
             rewards += \
                 calculate_rewards_with_in_range_method(self.current_lost_lives, self._ideal_lives_lost,
-                                                       self._accepted_lives_variation, 0.5) * 2
+                                                       self._accepted_lives_variation, 0.5)
 
         elif not self.is_playable() and self._changes_made == self._max_changes:
             rewards -= 20
