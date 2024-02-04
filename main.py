@@ -36,9 +36,9 @@ class TrainAndLoggingCallback(BaseCallback):
 if __name__ == "__main__":
     PLY_LOGS = './player_logs/4.'
     GEN_LOGS = './final_generator_logs/V3.'
-    CHECKPOINT_DIR = './Final_Generator_models/V3.'
-    GEN_STEPS = 3_500_000
-    PLY_STEPS = 500_000
+    CHECKPOINT_DIR = './V3.'
+    GEN_STEPS = 500_000
+    PLY_STEPS = 1
     GEN_FREEZE_AFTER = 1_000_000
 
     Player = Trainer(Player, PLY_STEPS, PLY_LOGS)
@@ -49,8 +49,9 @@ if __name__ == "__main__":
 
 
     env = SubprocVecEnv([lambda: create_gen_env() for _ in range(5)])
+    # env = Generator(True, Player, GEN_FREEZE_AFTER)
     callback = TrainAndLoggingCallback(check_freq=500_000, save_path=CHECKPOINT_DIR)
 
     model = PPO('MultiInputPolicy', env, verbose=1, tensorboard_log=GEN_LOGS)
     model.learn(total_timesteps=GEN_STEPS, callback=callback)
-    model.save('./Final_Generator_models/V3/Final_Iteration/.')
+    model.save('./Final_Generator_models/V3/Max 55/.')

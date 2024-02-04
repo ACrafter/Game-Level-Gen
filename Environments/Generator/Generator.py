@@ -15,8 +15,7 @@ class Generator(gym.Env):
         Goal: Generate levels that responds to the player's experience (Harder for better players, Easier for bad ones),
     """
 
-    def __init__(self, size=5, player=None, player_t=200_000, generator_t=100_000, player_max_t=1_000_000,
-                 player_lr=0.0001):
+    def __init__(self, size=5, player=None, player_t=200_000, generator_t=100_000, player_max_t=1_000_000):
         """
         Initializes base parameters, the rest are initialized in the Reset()
         :param size: Board size
@@ -32,7 +31,6 @@ class Generator(gym.Env):
         self.player_steps = player_t
         self.generator_steps_per_eps = generator_t
         self.player_max_steps = player_max_t
-        self.player_lr = player_lr
         self.player_total_trained_steps = 0
 
         self.observation_space = spaces.Dict({
@@ -77,10 +75,10 @@ class Generator(gym.Env):
 
         if self.player_total_trained_steps < self.player_max_steps:
 
-            print(f"Started Player Training, Steps: {self.player_steps}, Learning_Rate: {self.player_lr}")
+            print(f"Started Player Training, Steps: {self.player_steps}")
             start_time = gettime()
+            print(f"Trained for: {self.player_trained_steps}")
             while self.player_trained_steps < self.player_steps:
-                print(f"Trained for: {self.player_trained_steps}")
                 self.train_player()
             end_time = gettime()
             print(f"Player Training Ended, Time Taken: {int(end_time - start_time) // 60} mins")
@@ -95,9 +93,8 @@ class Generator(gym.Env):
         return observation, info
 
     def train_player(self):
-
-        self.player_model = DQN('MultiInputPolicy', self.player, verbose=1, tensorboard_log='./player_log/',
-                                learning_rate=self.player_lr)
+        self.player.reset()
+        self.player_model = DQN('MultiInputPolicy', env=self.player, verbose=1, tensorboard_log='./player_log/')
 
         self.player_model.learn(total_timesteps=1)
         self.player_trained_steps += self.player_steps

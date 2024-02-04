@@ -163,7 +163,7 @@ class BetterEnv(gym.Env):
             self.steps_since_last_eat -= 0.1
 
         self.current_number = self.board[self.player_pos[0]][self.player_pos[1]]
-        terminated = self.lives[0] == 0 or self.remaining_number_of_primes == 0  # V6
+        terminated = self.lives == 0 or self.remaining_number_of_primes == 0  # V6
         observation = self._get_obs()
 
         if self.remaining_number_of_primes == 0:  # V6

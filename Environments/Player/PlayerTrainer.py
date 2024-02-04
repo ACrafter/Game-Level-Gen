@@ -26,7 +26,7 @@ class Trainer:
         self.preset = preset
         self.iterations = 1
 
-    def train(self, lr=None, er=None, default=False):
+    def train(self, lr=None, er=None, default=False, max=None):
         """
 
         :param default:
@@ -51,7 +51,7 @@ class Trainer:
             return [int(train_env.get_average_lives_lost()), int(train_env.get_average_time_lost()),
                     train_env.get_max_number_appeared()]
         else:
-            return [LIVES_DEFAULT, TIME_DEFAULT, MAX_DEFAULT]
+            return [LIVES_DEFAULT, TIME_DEFAULT, max]
 
     def play(self, arr, default=False):
         if not default:

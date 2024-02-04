@@ -28,6 +28,7 @@ class Player(gym.Env):
         self.prime_count = np.array([self.ideal_prime_count - self.accepted_prime_variation, self.ideal_prime_count,
                                      self.ideal_prime_count + self.accepted_prime_variation])
         self.remaining_number_of_primes = 0
+        self.active_primes = []
 
         self.steps_since_last_eat = 0
         self.lives_lost = 0
@@ -58,7 +59,7 @@ class Player(gym.Env):
             "player_pos": spaces.Box(0, self.size, shape=(2,),
                                      dtype=int),
             "current_number": spaces.Box(0, self.max_num, shape=(1,), dtype=int),
-            "is_prime": spaces.Box(0, 1, shape=(1,), dtype=int)
+            "active_primes": spaces.Box(0, self.max_num, shape=(10,), dtype=int)
         })
 
         # Action Space
@@ -70,7 +71,7 @@ class Player(gym.Env):
             "player_pos": np.array([self.player_pos]),
             "lives_lost": np.array([self.lives_lost]),
             "current_number": np.array([self.current_number]),
-            "is_prime": np.array([self.is_prime])
+            "active_primes": np.array(list(self.active_primes))
         }
 
     def reset(self, seed=None, options=None):
@@ -82,9 +83,17 @@ class Player(gym.Env):
         # Level Info
         if self.preset_level is None:
             self.remaining_number_of_primes = np.random.choice(self.prime_count)
-            self.board, _ = gen_board(self.size, self.current_max_num, self.remaining_number_of_primes)
+            self.board, self.active_primes = gen_board(self.size, self.current_max_num, self.remaining_number_of_primes)
         else:
-            self.board, _, self.remaining_number_of_primes = self.preset_level
+            self.board, self.active_primes, self.remaining_number_of_primes = self.preset_level
+            self.active_primes = set(self.active_primes)
+
+        i = 0
+        while len(self.active_primes) != 10:
+            i -= 1
+            self.active_primes.add(i)
+
+        # print(self.active_primes)
 
         # Agent Info
         self.lives_lost = 0
@@ -103,7 +112,8 @@ class Player(gym.Env):
         return obs, {}
 
     def step(self, action):
-        reward = -10 if not sympy.isprime(self.current_number) else -5
+        # reward = -10 if not sympy.isprime(self.current_number) else -5
+        reward = 0
         if action == 0:  # Up
             self.player_pos[0] = max(self.player_pos[0] - 1, 0)
 
@@ -117,18 +127,20 @@ class Player(gym.Env):
             self.player_pos[1] = min(self.player_pos[1] + 1, 4)
 
         if action == 4:  # Eating
-            if self.current_number != 0:
-                self.eaten_numbers.append(
+            # if self.current_number != 0:
+            self.eaten_numbers.append(
                     [self.current_number, True if sympy.isprime(self.current_number) else False]
                 )
 
-            if self.is_prime == 1:
-                reward = 20
+            if self.current_number in self.active_primes:
+                reward = 1
                 self.remaining_number_of_primes -= 1
+
+                if self.remaining_number_of_primes == 0:
+                    reward += 5
             else:
-                if self.current_number != 0:
-                    reward = -5
-                    self.lives_lost += 1
+                # reward = -1
+                self.lives_lost += 1
 
             self.board[self.player_pos[0]][self.player_pos[1]] = 0
 

@@ -17,4 +17,4 @@ def gen_board(size, current_max, number_of_primes):
     np.random.shuffle(board)
     board = np.reshape(board, (size, size))
 
-    return board, prime_cells
+    return board, set(prime_cells)

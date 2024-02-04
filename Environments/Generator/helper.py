@@ -40,8 +40,9 @@ def calculate_rewards_PCGRL(current, old, ideal, accepted_variation, max_only=Fa
 def check_primes(level, min_number=None, max_number=None):
     primes = []
     for e in level.flatten():
-        if min_number:
+        if min_number is not None:
             if sympy.isprime(e) and min_number <= e <= max_number:
+                # print(e)
                 primes.append(e)
         else:
             if sympy.isprime(e):
